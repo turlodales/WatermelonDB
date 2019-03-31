@@ -2,7 +2,7 @@ declare module '@nozbe/watermelondb/Model' {
   import { ColumnName, TableName, Collection } from '@nozbe/watermelondb'
   import { Observable } from 'rxjs'
 
-  export type RecordId = string
+  export type RecordId = string & { _: 'RecordId' } // opaque type
 
   export type SyncStatus = 'synced' | 'created' | 'updated' | 'deleted'
 
