@@ -25,7 +25,7 @@ declare module '@nozbe/watermelondb/Model' {
 
   export default class Model {
     // FIXME: How to correctly point to a static this?
-    public static table: TableName<Model>
+    public static table: TableName<any>
 
     public static associations: Associations
 
@@ -43,7 +43,7 @@ declare module '@nozbe/watermelondb/Model' {
 
     public observe(): Observable<this>
 
-    public batch(...records: Readonly<[Model]>): Promise<void>
+    public batch(...records: Array<Readonly<[Model]>>): Promise<void>
 
     public subAction<T>(action: () => Promise<T>): Promise<T>
 
