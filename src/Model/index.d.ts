@@ -33,9 +33,9 @@ declare module '@nozbe/watermelondb/Model' {
 
     public syncStatus: SyncStatus
 
-    public update(recordUpdater?: (this: this) => void): Promise<void>
+    public update(recordUpdater?: (model: this) => void): Promise<void>
 
-    public prepareUpdate(recordUpdater?: (this: this) => void): this
+    public prepareUpdate(recordUpdater?: (model: this) => void): this
 
     public markAsDeleted(): Promise<void>
 

@@ -18,7 +18,7 @@ declare module '@nozbe/watermelondb/Query' {
 
     public extend(...conditions: Condition[]): Query<Record>
 
-    public pipe<T>(transform: (this: this) => T): T
+    public pipe<T>(transform: (query: this) => T): T
 
     public fetch(): Promise<Record[]>
 
