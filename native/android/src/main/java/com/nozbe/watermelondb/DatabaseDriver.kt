@@ -54,11 +54,9 @@ class DatabaseDriver(context: Context, dbName: String) {
             if (it.count <= 0) {
                 return null
             }
-            val resultMap = Arguments.createMap()
             markAsCached(table, id)
             it.moveToFirst()
-            resultMap.mapCursor(it)
-            return resultMap
+            return mapCursorToWritableMap(it)
         }
     }
 
@@ -81,19 +79,16 @@ class DatabaseDriver(context: Context, dbName: String) {
         return resultArray
     }
 
-    private fun WritableArray.pushMapFromCursor(cursor: Cursor) {
-        val cursorMap = Arguments.createMap()
-        cursorMap.mapCursor(cursor)
-        this.pushMap(cursorMap)
-    }
+    private fun WritableArray.pushMapFromCursor(cursor: Cursor) =
+        this.pushMap(mapCursorToWritableMap(cursor))
 
     fun getDeletedRecords(table: TableName): WritableArray {
         val resultArray = Arguments.createArray()
-        database.rawQuery(Queries.selectDeletedIdsFromTable(table)).use {
-            it.moveToFirst()
-            for (i in 0 until it.count) {
-                resultArray.pushString(it.getString(0))
-                it.moveToNext()
+        database.rawQuery(Queries.selectDeletedIdsFromTable(table)).use { cursor ->
+            cursor.moveToFirst()
+            repeat(cursor.count) {
+                resultArray.pushString(cursor.getString(0))
+                cursor.moveToNext()
             }
         }
         return resultArray
@@ -176,12 +171,11 @@ class DatabaseDriver(context: Context, dbName: String) {
 
     private fun removeFromCache(table: TableName, id: RecordID) = cachedRecords[table]?.remove(id)
 
-    private fun setUpSchema(schema: Schema) {
-        database.transaction {
-            database.executeStatements(schema.sql + Queries.localStorageSchema)
-            database.userVersion = schema.version
-        }
-    }
+    private fun setUpSchema(schema: Schema) =
+            database.transaction {
+                database.executeStatements(schema.sql + Queries.localStorageSchema)
+                database.userVersion = schema.version
+            }
 
     private fun migrate(migrations: MigrationSet) {
         require(database.userVersion == migrations.from) {
