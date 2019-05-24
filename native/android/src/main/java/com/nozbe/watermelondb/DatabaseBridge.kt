@@ -12,9 +12,13 @@ import com.nozbe.watermelondb.DatabaseDriver.Operation
 class DatabaseBridge(private val reactContext: ReactApplicationContext) :
         ReactContextBaseJavaModule(reactContext) {
 
+    companion object {
+        const val NAME = "DatabaseBridge"
+    }
+
     private val connections: MutableMap<ConnectionTag, Connection> = mutableMapOf()
 
-    override fun getName(): String = "DatabaseBridge"
+    override fun getName(): String = NAME
 
     sealed class Connection {
         class Connected(val driver: DatabaseDriver) : Connection()
@@ -170,11 +174,13 @@ class DatabaseBridge(private val reactContext: ReactApplicationContext) :
                             Exception("No driver with tag $tag available"))) {
                 is Connection.Connected -> {
                     val result = function(connection.driver)
-                    promise.resolve(if (result === Unit) {
-                        true
-                    } else {
-                        result
-                    })
+                    promise.resolve(
+                            if (result is Unit) {
+                                true
+                            } else {
+                                result
+                            }
+                    )
                 }
                 is Connection.Waiting -> {
                     // try again when driver is ready
@@ -227,7 +233,7 @@ class DatabaseBridge(private val reactContext: ReactApplicationContext) :
                         //     val key = operation.getString(1)
                         //     preparedOperations.add(Operation.RemoveLoacl(key))
                         // }
-                        else -> throw (Throwable("Bad operation name in batch"))
+                        else -> throw (Throwable("Bad operation name ($type) in batch"))
                     }
                 } catch (e: ClassCastException) {
                     throw (Throwable("Bad $type arguments", e))
@@ -246,19 +252,13 @@ class DatabaseBridge(private val reactContext: ReactApplicationContext) :
     ) {
         val queue = connections[connectionTag]?.queue ?: arrayListOf()
         connections[connectionTag] = Connection.Connected(driver)
-
-        for (operation in queue) {
-            operation()
-        }
+        queue.forEach { it() }
         promise.resolve(true)
     }
 
     private fun disconnectDriver(connectionTag: ConnectionTag) {
         val queue = connections[connectionTag]?.queue ?: arrayListOf()
         connections.remove(connectionTag)
-
-        for (operation in queue) {
-            operation()
-        }
+        queue.forEach { it() }
     }
 }
