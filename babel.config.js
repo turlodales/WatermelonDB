@@ -3,7 +3,7 @@ const plugins = [
     '@babel/plugin-transform-runtime',
     {
       helpers: true,
-      // regenerator: true,
+      // regenerator: true, // FIXME: true is the default?
     },
   ],
   [

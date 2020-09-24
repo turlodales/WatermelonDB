@@ -5,9 +5,9 @@ const glob = require('glob-to-regexp')
 const getBlacklistRE = () => {
   // ignore dist/, dev/
   const defaultPattern = blacklist([
-    glob(`${path.resolve(__dirname, '..')}/dist/*`),
-    glob(`${path.resolve(__dirname, '..')}/dev/*`),
-    glob(`${path.resolve(__dirname, '..')}/example/*`),
+    glob(`${path.resolve(__dirname, '..')}/dist/**`, { globstars: true }),
+    glob(`${path.resolve(__dirname, '..')}/dev/**`, { globstars: true }),
+    glob(`${path.resolve(__dirname, '..')}/example/**`, { globstars: true }),
   ])
     .toString()
     .slice(1, -1)
