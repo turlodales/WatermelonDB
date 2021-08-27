@@ -16,6 +16,7 @@ target 'WatermelonTester' do
 
   pod 'React-jsi', path: '../../node_modules/react-native/ReactCommon/jsi', modular_headers: true
   pod 'WatermelonDB', path: '../../'
+  pod 'simdjson', path: '../../node_modules/@nozbe/simdjson'
 
   # post_install do |installer|
   #   react_native_post_install(installer)
@@ -25,7 +26,6 @@ target 'WatermelonTester' do
     inherit! :search_paths
     use_frameworks!
 
-    pod 'Nimble',                 '~> 8.1.2'
   end
 end
 
@@ -37,12 +37,12 @@ post_install do |installer|
       # sometimes you might have to manually add a system framework to project Link phase
       # more info: https://pspdfkit.com/blog/2015/ccache-for-fun-and-profit/
       config.build_settings['CC'] ||= ['$(SRCROOT)/../../../scripts/ccache-clang']
-      case target.name
-      when 'Nimble'
-        config.build_settings['CLANG_ENABLE_MODULES'] ||= ['YES']
-      else
+      # case target.name
+      # when 'Nimble'
+      #   config.build_settings['CLANG_ENABLE_MODULES'] ||= ['YES']
+      # else
         config.build_settings['CLANG_ENABLE_MODULES'] ||= ['NO']
-      end
+      # end
     end
   end
 end

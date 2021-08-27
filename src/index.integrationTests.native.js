@@ -27,21 +27,29 @@ if (openPlayground) {
     const integrationTests = require('./__tests__/integrationTests').default
 
     const { current: testHookStore } = React.useRef(new TestHookStore())
-    const sendReport = report => {
+    const sendReport = (report) => {
       // eslint-disable-next-line
       console.log('Done:')
+      const { results, ...rest } = report
       // eslint-disable-next-line
-      console.log(report)
+      console.log(rest)
+      // eslint-disable-next-line
+      results.forEach((result) => console.log(result))
       NativeModules.BridgeTestReporter.testsFinished(report)
     }
 
     return (
-      <Tester specs={integrationTests}
+      <Tester
+        specs={integrationTests}
         store={testHookStore}
         waitTime={4000}
         sendReport={true}
-        customReporter={sendReport}>
-        <Text style={{ paddingTop: 100 }}>The tests are running. Please remain calm.</Text>
+        customReporter={sendReport}
+      >
+        <Text style={{ paddingTop: 100 }}>
+          The tests are running. Please remain calm. Using hermes?{' '}
+          {global.HermesInternal ? 'YES' : 'NO'}
+        </Text>
       </Tester>
     )
   }

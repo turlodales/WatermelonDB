@@ -2,7 +2,7 @@
 
 import { values } from '../../utils/fp'
 
-import { logError, invariant } from '../../utils/common'
+import { invariant } from '../../utils/common'
 
 import type { Model, Collection, Database } from '../..'
 import { type RawRecord, type DirtyRaw, sanitizedRaw } from '../../RawRecord'
@@ -30,17 +30,9 @@ export function resolveConflict(local: RawRecord, remote: DirtyRaw): DirtyRaw {
   }
 
   // Use local properties where changed
-  local._changed.split(',').forEach(column => {
+  local._changed.split(',').forEach((column) => {
     resolved[column] = local[column]
   })
-
-  // Handle edge case
-  if (local._status === 'created') {
-    logError(
-      `[Sync] Server wants client to update record ${local.id}, but it's marked as locally created. This is most likely either a server error or a Watermelon bug (please file an issue if it is!). Will assume it should have been 'synced', and just replace the raw`,
-    )
-    resolved._status = 'synced'
-  }
 
   return resolved
 }
@@ -107,13 +99,6 @@ export function prepareMarkAsSynced<T: Model>(record: T): T {
   })
 }
 
-export function ensureActionsEnabled(database: Database): void {
-  invariant(
-    database._actionsEnabled,
-    '[Sync] To use Sync, Actions must be enabled. Pass `{ actionsEnabled: true }` to Database constructor — see docs for more details',
-  )
-}
-
 export function ensureSameDatabase(database: Database, initialResetCount: number): void {
   invariant(
     database._resetCount === initialResetCount,
@@ -121,13 +106,13 @@ export function ensureSameDatabase(database: Database, initialResetCount: number
   )
 }
 
-export const isChangeSetEmpty: SyncDatabaseChangeSet => boolean = changeset =>
+export const isChangeSetEmpty: (SyncDatabaseChangeSet) => boolean = (changeset) =>
   values(changeset).every(
     ({ created, updated, deleted }) => created.length + updated.length + deleted.length === 0,
   )
 
-const sum: (number[]) => number = xs => xs.reduce((a, b) => a + b, 0)
-export const changeSetCount: SyncDatabaseChangeSet => number = changeset =>
+const sum: (number[]) => number = (xs) => xs.reduce((a, b) => a + b, 0)
+export const changeSetCount: (SyncDatabaseChangeSet) => number = (changeset) =>
   sum(
     values(changeset).map(
       ({ created, updated, deleted }) => created.length + updated.length + deleted.length,
