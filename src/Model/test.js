@@ -292,7 +292,7 @@ describe('CRUD', () => {
       expect(spyOnPrepareDestroyPermanentlyTask).toHaveBeenCalledTimes(1)
       expect(spyOnPrepareDestroyPermanentlyComment).toHaveBeenCalledTimes(1)
 
-      expect(spyBatchDB).toHaveBeenCalledWith(comment, task, project)
+      expect(spyBatchDB).toHaveBeenCalledWith([comment, task, project])
     })
   })
   it('can mark a record as deleted', async () => {
@@ -347,7 +347,7 @@ describe('CRUD', () => {
       expect(spyOnPrepareMarkAsDeletedTask).toHaveBeenCalledTimes(1)
       expect(spyOnPrepareMarkAsDeletedComment).toHaveBeenCalledTimes(1)
 
-      expect(spyBatchDB).toHaveBeenCalledWith(comment, task, project)
+      expect(spyBatchDB).toHaveBeenCalledWith([comment, task, project])
     })
   })
 })
@@ -384,7 +384,7 @@ describe('Safety features', () => {
         m1.update(() => {
           m1.name = 'new'
         }),
-        'Not allowed to change deleted records',
+        'Not allowed to change deleted record',
       )
     })
   })
@@ -399,7 +399,7 @@ describe('Safety features', () => {
         m1.update(() => {
           m1.name = 'new'
         }),
-        'Not allowed to change deleted records',
+        'Not allowed to change deleted record',
       )
     })
   })

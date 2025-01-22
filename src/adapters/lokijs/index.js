@@ -4,7 +4,7 @@
 import type { LokiMemoryAdapter } from './type'
 import invariant from '../../utils/common/invariant'
 import logger from '../../utils/common/logger'
-import type { ResultCallback } from '../../utils/fp/Result'
+import type { ResultCallback, Result } from '../../utils/fp/Result'
 
 import type { RecordId } from '../../Model'
 import type { TableName, AppSchema } from '../../Schema'
@@ -118,28 +118,13 @@ export default class LokiJSAdapter implements DatabaseAdapter {
           'LokiJSAdapter {useIncrementalIndexedDB: false} option is now deprecated. If you rely on this feature, please file an issue',
         )
       }
-      invariant(
-        !('indexedDBSerializer' in options),
-        'LokiJSAdapter `indexedDBSerializer` option is now `{ extraIncrementalIDBOptions: { serializeChunk, deserializeChunk } }`',
-      )
-      invariant(
-        !('onIndexedDBFetchStart' in options),
-        'LokiJSAdapter `onIndexedDBFetchStart` option is now `extraIncrementalIDBOptions: { onFetchStart }`',
-      )
-      invariant(
-        !('onIndexedDBVersionChange' in options),
-        'LokiJSAdapter `onIndexedDBVersionChange` option is now `extraIncrementalIDBOptions: { onversionchange }`',
-      )
-      invariant(
-        !('autosave' in options),
-        'LokiJSAdapter `autosave` option is now `extraLokiOptions: { autosave }`',
-      )
       validateAdapter(this)
     }
-    const callback = (result) => devSetupCallback(result, options.onSetUpError)
+    const callback = (result: Result<any>) => devSetupCallback(result, options.onSetUpError)
     this._dispatcher.call('setUp', [options], callback)
   }
 
+  // eslint-disable-next-line no-use-before-define
   async testClone(options?: $Shape<LokiAdapterOptions> = {}): Promise<LokiJSAdapter> {
     // Ensure data is saved to memory
     // $FlowFixMe
@@ -206,11 +191,11 @@ export default class LokiJSAdapter implements DatabaseAdapter {
   }
 
   unsafeLoadFromSync(jsonId: number, callback: ResultCallback<any>): void {
-    callback({ error: new Error('unsafeLoadFromSync unavailable') })
+    callback({ error: new Error('unsafeLoadFromSync unavailable in LokiJS') })
   }
 
   provideSyncJson(id: number, syncPullResultJson: string, callback: ResultCallback<void>): void {
-    callback({ error: new Error('provideSyncJson unavailable') })
+    callback({ error: new Error('provideSyncJson unavailable in LokiJS') })
   }
 
   unsafeResetDatabase(callback: ResultCallback<void>): void {

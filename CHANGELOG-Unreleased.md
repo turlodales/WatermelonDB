@@ -1,38 +1,34 @@
-# Changelog
-
-## Unreleased
+### Highlights
 
 ### BREAKING CHANGES
 
-- [Query] `Q.where(xxx, undefined)` will now throw an error. This is a bug fix, since comparing to
-  undefined was never allowed and would either error out or produce a wrong result in some cases.
-  However, it could technically break an app that relied on existing buggy behavior
+- [iOS] Podspec deployment target was bumped from iOS 11 to iOS 12
+- [Android] Installation of Android JSI adapter has changed. To migrate, remove `getJSIModulePackage()` override in your `MainApplication.{java,kt}`, and add `new WatermelonDBJSIPackage()` to `getPackages()` override instead. See Installation docs for details.
 
 ### Deprecations
 
 ### New features
 
-- [adapters] Adapter objects can now be distinguished by checking their `static adapterType`
-- [Query] New `Q.includes('foo')` query for case-sensitive exact string includes comparison
-- [adapters] Adapter objects now returns `dbName`
-- [TypeScript] Add unsafeExecute method
-- [TypeScript] Add localStorage property to Database
-
-### Performance
-
-- [LokiJS] Updated Loki with some performance improvements
-- [iOS] JSLockPerfHack now works on iOS 15
-- Improved `@json` decorator, now with optional `{ memo: true }` parameter
-
-### Changes
-
-- [Docs] Added additional Android JSI installation step
+- Added `Database#experimentalIsVerbose` option
+- Support for React Native 0.74+
 
 ### Fixes
 
-- [android] Fixed compilation on some setups due to a missing <cassert> import
-- [sync] Fixed marking changes as synced for users that don't keep globally unique (only per-table unique) IDs
-- Fix `Model.experimentalMarkAsDeleted/experimentalDestroyPermanently()` throwing an error in some cases
-- Fixes included in updated `withObservables`
+- [ts] Improved LocalStorage type definition
+- [ts] Add missing .d.ts for experimentalFailsafe decorator
+- [migrations] `unsafeExecuteSql` migration is now validate to ensure it ends with a semicolon (#1811)
+
+### Performance
+
+### Changes
+
+- Minimum supported Node.js version is now 18.x
+- Improved Model diagnostic errors now always contain `table#id` of offending record
+- Update `better-sqlite3` to 11.x
+- Update sqlite (used by Android in JSI mode) to 3.46.0
+- [docs] Improved Android installation docs
+- [docs] Removed examples from the codebase as they were unmaintained
 
 ### Internal
+
+- Update internal dependencies

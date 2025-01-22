@@ -1,10 +1,10 @@
 import { $Exact } from '../types'
 
 import type { Database, RecordId, TableName, Model } from '..'
-import { type DirtyRaw } from '../RawRecord'
+import type { DirtyRaw } from '../RawRecord'
 
 import type { SchemaVersion } from '../Schema'
-import { type MigrationSyncChanges } from '../Schema/migrations/getSyncChanges'
+import type { MigrationSyncChanges } from '../Schema/migrations/getSyncChanges'
 
 export type Timestamp = number
 
@@ -58,8 +58,8 @@ export type SyncConflictResolver = (
 
 export type SyncArgs = $Exact<{
   database: Database
-  pullChanges: (SyncPullArgs) => Promise<SyncPullResult>
-  pushChanges?: (SyncPushArgs) => Promise<SyncPushResult | undefined>
+  pullChanges: (_: SyncPullArgs) => Promise<SyncPullResult>
+  pushChanges?: (_: SyncPushArgs) => Promise<SyncPushResult | undefined | void>
   // version at which support for migration syncs was added - the version BEFORE first syncable migration
   migrationsEnabledAtVersion?: SchemaVersion
   sendCreatedAsUpdated?: boolean
@@ -80,7 +80,12 @@ export type SyncArgs = $Exact<{
   unsafeTurbo?: boolean
   // Called after pullChanges with whatever was returned by pullChanges, minus `changes`. Useful
   // when using turbo mode
-  onDidPullChanges?: (Object) => Promise<void>
+  onDidPullChanges?: (_: Object) => Promise<void>
+  // Called after pullChanges is done, but before these changes are applied. Some stats about the pulled
+  // changes are passed as arguments. An advanced user can use this for example to show some UI to the user
+  // when processing a very large sync (could be useful for replacement syncs). Note that remote change count
+  // is NaN in turbo mode.
+  onWillApplyRemoteChanges?: (info: $Exact<{ remoteChangeCount: number }>) => Promise<void>
 }>
 
 export function synchronize(args: SyncArgs): Promise<void>

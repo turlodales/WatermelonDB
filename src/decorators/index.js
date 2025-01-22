@@ -1,6 +1,6 @@
 // @flow
 
-export { default as action, writer, reader } from './action'
+export { writer, reader } from './action'
 export { default as children } from './children'
 export { default as json } from './json'
 export { default as nochange } from './nochange'
@@ -11,3 +11,4 @@ export { default as readonly } from './readonly'
 export { default as lazy } from './lazy'
 export { default as relation } from './relation'
 export { default as immutableRelation } from './immutableRelation'
+export { default as experimentalFailsafe } from './experimentalFailsafe'

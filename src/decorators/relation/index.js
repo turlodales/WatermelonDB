@@ -27,29 +27,31 @@ const relation =
     relationTable: TableName<any>,
     relationIdColumn: ColumnName,
     options: ?Options,
-  ): (((
+  ): ((
     target: any,
     key: string,
     descriptor: any,
-  ) => {| get: () => Relation<Model>, set: () => void |})) =>
+  ) => {| get: () => Relation<Model>, set: () => void |}) =>
   (target: Object, key: string, descriptor: Object) => {
     ensureDecoratorUsedProperly(relationIdColumn, target, key, descriptor)
 
     return {
       get(): Relation<Model> {
-        this._relationCache = this._relationCache || {}
-        const cachedRelation = this._relationCache[key]
+        // $FlowFixMe
+        const model = this
+        model._relationCache = model._relationCache || {}
+        const cachedRelation = model._relationCache[key]
         if (cachedRelation) {
           return cachedRelation
         }
 
         const newRelation = new Relation(
-          this.asModel,
+          model.asModel,
           relationTable,
           relationIdColumn,
           options || { isImmutable: false },
         )
-        this._relationCache[key] = newRelation
+        model._relationCache[key] = newRelation
 
         return newRelation
       },

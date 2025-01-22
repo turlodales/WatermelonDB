@@ -1,8 +1,8 @@
 import { ColumnName, TableName } from '../../Schema'
 
-type immutableRelation = (
+declare function immutableRelation(
   relationTable: TableName<any>,
   relationIdColumn: ColumnName,
-) => PropertyDecorator
+): PropertyDecorator
 
 export default immutableRelation

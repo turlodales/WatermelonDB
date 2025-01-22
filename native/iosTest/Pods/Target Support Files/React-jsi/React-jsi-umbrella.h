@@ -10,7 +10,6 @@
 #endif
 #endif
 
-#import "jsi/JSCRuntime.h"
 #import "jsi/decorator.h"
 #import "jsi/instrumentation.h"
 #import "jsi/jsi-inl.h"

@@ -1,16 +1,16 @@
 // @flow
 import { Observable, Subject } from '../utils/rx'
-import { type ResultCallback } from '../utils/fp/Result'
-import { type Unsubscribe } from '../utils/subscriptions'
+import type { ResultCallback } from '../utils/fp/Result'
+import type { ArrayOrSpreadFn } from '../utils/fp'
+import type { Unsubscribe } from '../utils/subscriptions'
 
 import Query from '../Query'
-import * as Q from '../QueryDescription'
 import type Database from '../Database'
 import type Model from '../Model'
 import type { RecordId } from '../Model'
 import type { Clause } from '../QueryDescription'
-import { type TableName, type TableSchema } from '../Schema'
-import { type DirtyRaw } from '../RawRecord'
+import type { TableName, TableSchema } from '../Schema'
+import { DirtyRaw } from '../RawRecord'
 
 import RecordCache from './RecordCache'
 
@@ -42,7 +42,7 @@ export default class Collection<Record extends Model> {
   findAndObserve(id: RecordId): Observable<Record>
 
   // Query records of this type
-  query(...clauses: Clause[]): Query<Record>
+  query: ArrayOrSpreadFn<Clause, Query<Record>>
 
   // Creates a new record in this collection
   // Pass a function to set attributes of the record.
@@ -55,7 +55,7 @@ export default class Collection<Record extends Model> {
 
   // Prepares a new record in this collection
   // Use this to batch-create multiple records
-  prepareCreate(recordBuilder: (Record) => void): Record
+  prepareCreate(recordBuilder: (_: Record) => void): Record
 
   // Prepares a new record in this collection based on a raw object
   // e.g. `{ foo: 'bar' }`. Don't use this unless you know how RawRecords work in WatermelonDB
@@ -68,10 +68,6 @@ export default class Collection<Record extends Model> {
   // Don't use this unless you know how RawRecords work in WatermelonDB.
   // This is useful when you're adding online-only features to an otherwise offline-first app
   disposableFromDirtyRaw(dirtyRaw: DirtyRaw): Record
-
-  // *** Implementation of Query APIs ***
-
-  unsafeFetchRecordsWithSQL(sql: string): Promise<Record[]>
 
   // *** Implementation details ***
 

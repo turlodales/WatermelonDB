@@ -1,16 +1,50 @@
 // @flow
 /* eslint-disable no-use-before-define */
 
-import { invariant, deprecated, logger } from '../utils/common'
+import { invariant, logger } from '../utils/common'
 import type Model from '../Model'
 import type Database from './index'
 
 export interface ReaderInterface {
+  /**
+   * Calls a Reader so that it runs as part of the current Reader (or Writer) instead of deadlocking.
+   *
+   * Specifically, the passed block should immediately call a method decorted with `@reader` or a
+   * function whose implementation is wrapped in `db.read()` block.
+   *
+   * See docs for more details.
+   *
+   * @example
+   * ```
+   * db.read(async reader => {
+   *   // ...
+   *   reader.callReader(() => someOtherReader())
+   * })
+   * ```
+   */
   callReader<T>(reader: () => Promise<T>): Promise<T>;
 }
 
 export interface WriterInterface extends ReaderInterface {
+  /**
+   * Calls another Writer so that it runs as part of the current Writer instead of deadlocking.
+   *
+   * Specifically, the passed block should immediately call a method decorated with `@writer` or
+   * a function whose implementation is wrapped in `db.write()` block.
+   *
+   * See docs for more details.
+   *
+   * @example
+   * ```
+   * db.write(async writer => {
+   *   // ...
+   *   writer.callWriter(() => someOtherWriter())
+   * })
+   * ```
+   */
   callWriter<T>(writer: () => Promise<T>): Promise<T>;
+
+  /** @see {Database#batch} */
   batch(...records: $ReadOnlyArray<Model | Model[] | null | void | false>): Promise<void>;
 }
 
@@ -42,17 +76,9 @@ class WriterInterfaceImpl extends ReaderInterfaceImpl implements WriterInterface
     return this.__workQueue.subAction(writer)
   }
 
-  subAction<T>(writer: () => Promise<T>): Promise<T> {
-    if (process.env.NODE_ENV !== 'production') {
-      deprecated('.subAction()', 'Use .callWriter() / .callReader() instead.')
-    }
-    this.__validateQueue()
-    return this.__workQueue.subAction(writer)
-  }
-
   batch(...records: any): Promise<any> {
     this.__validateQueue()
-    return this.__workQueue._db.batch(...records)
+    return this.__workQueue._db.batch(records)
   }
 }
 
@@ -99,26 +125,33 @@ export default class WorkQueue {
     }
 
     return new Promise((resolve, reject) => {
+      const workItem: WorkQueueItem<T> = { work, isWriter, resolve, reject, description }
+
       if (process.env.NODE_ENV !== 'production' && this._queue.length) {
-        // TODO: This warning confuses people - maybe delay its showing by some time (say, 1s) to avoid showing it unnecessarily?
-        const queue = this._queue
-        const current = queue[0]
-        const enqueuedKind = isWriter ? 'writer' : 'reader'
-        const currentKind = current.isWriter ? 'writer' : 'reader'
-        logger.warn(
-          `The ${enqueuedKind} you're trying to run (${
-            description || 'unnamed'
-          }) can't be performed yet, because there are ${
-            queue.length
-          } other readers/writers in the queue. Current ${currentKind}: ${
-            current.description || 'unnamed'
-          }. If everything is working fine, you can safely ignore this message (queueing is working as expected). But if your readers/writers are not running, it's because the current ${currentKind} is stuck. Remember that if you're calling a reader/writer from another reader/writer, you must use callReader()/callWriter(). See docs for more details.`,
-        )
-        logger.log(`Enqueued ${enqueuedKind}:`, work)
-        logger.log(`Running ${currentKind}:`, current.work)
+        setTimeout(() => {
+          const queue = this._queue
+          const current = queue[0]
+          if (current === workItem || !queue.includes(workItem)) {
+            return
+          }
+
+          const enqueuedKind = isWriter ? 'writer' : 'reader'
+          const currentKind = current.isWriter ? 'writer' : 'reader'
+          logger.warn(
+            `The ${enqueuedKind} you're trying to run (${
+              description || 'unnamed'
+            }) can't be performed yet, because there are ${
+              queue.length
+            } other readers/writers in the queue.\n\nCurrent ${currentKind}: ${
+              current.description || 'unnamed'
+            }.\n\nIf everything is working fine, you can safely ignore this message (queueing is working as expected). But if your readers/writers are not running, it's because the current ${currentKind} is stuck.\nRemember that if you're calling a reader/writer from another reader/writer, you must use callReader()/callWriter(). See docs for more details.`,
+          )
+          logger.log(`Enqueued ${enqueuedKind}:`, work)
+          logger.log(`Running ${currentKind}:`, current.work)
+        }, 1500)
       }
 
-      this._queue.push({ work, isWriter, resolve, reject, description })
+      this._queue.push(workItem)
 
       if (this._queue.length === 1) {
         this._executeNext()

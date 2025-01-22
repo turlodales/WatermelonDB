@@ -1,5 +1,4 @@
 import UIKit
-import WatermelonDB
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate, RCTBridgeDelegate {
@@ -28,6 +27,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate, RCTBridgeDelegate {
 
         return true
     }
+    
+    func unusedFunction() {
+        // It's here to ensure this compiles correctly
+        var error: NSError?
+        watermelondbProvideSyncJson(0, Data(), &error)
+    }
 
     // MARK: - Singleton
 
@@ -54,7 +59,7 @@ extension AppDelegate {
 //        }
 
         guard let jsLocation = RCTBundleURLProvider.sharedSettings()
-            .jsBundleURL(forBundleRoot: "src/index.integrationTests.native", fallbackResource: nil)
+            .jsBundleURL(forBundleRoot: "src/index.integrationTests.native")
         else {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 UIAlertController(title: "Could not find JS",

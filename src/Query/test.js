@@ -208,6 +208,17 @@ describe('Query', () => {
       const query = new Query(mockCollection, [Q.unsafeSqlQuery('select * from tasks')])
       expect(() => query.extend()).toThrow('Cannot extend an unsafe SQL query')
     })
+    it(`can pass array instead of a list`, () => {
+      const query = new Query(mockCollection, [
+        Q.on('projects', 'team_id', 'abcdef'),
+        Q.where('left_column', 'right_value'),
+      ])
+      const clauses = [
+        Q.on('tag_assignments', 'tag_id', Q.oneOf(['a', 'b', 'c'])),
+        Q.where('id', 'abcdef'),
+      ]
+      expect(query.extend(clauses).serialize()).toEqual(query.extend(...clauses).serialize())
+    })
   })
   it('can pipe query', () => {
     const query = new Query(mockCollection, [Q.on('projects', 'team_id', 'abcdef')])
@@ -255,11 +266,11 @@ describe('Query', () => {
 
   describe('observation', () => {
     // NOTE: Sanity checks only. Concrete tests: observation/
-    const waitFor = (database) => {
+    const waitFor = (database) =>
       // make sure we wait until end of DB queue without triggering query for
       // easy counting
-      return database.adapter.getLocal('nothing')
-    }
+      database.adapter.getLocal('nothing')
+
     const testQueryObservation = async (makeSubscribe, withColumns) => {
       const { database, tasks } = mockDatabase()
       const adapterSpy = jest.spyOn(database.adapter.underlyingAdapter, 'query')
@@ -326,7 +337,9 @@ describe('Query', () => {
       expect(observer).toHaveBeenLastCalledWith(0)
 
       if (isThrottled) {
-        await new Promise((resolve) => setTimeout(resolve, 300))
+        await new Promise((resolve) => {
+          setTimeout(resolve, 300)
+        })
       }
 
       await database.write(() => tasks.create())

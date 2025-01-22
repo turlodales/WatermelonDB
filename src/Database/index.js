@@ -2,8 +2,13 @@
 
 import { type Observable, startWith, merge as merge$ } from '../utils/rx'
 import { type Unsubscribe } from '../utils/subscriptions'
-import { invariant, logger, deprecated } from '../utils/common'
-import { noop } from '../utils/fp'
+import { invariant, logger } from '../utils/common'
+import {
+  noop,
+  fromArrayOrSpread,
+  // eslint-disable-next-line no-unused-vars
+  type ArrayOrSpreadFn,
+} from '../utils/fp'
 
 import type { DatabaseAdapter, BatchOperation } from '../adapters/type'
 import DatabaseAdapterCompat from '../adapters/compat'
@@ -27,6 +32,13 @@ export function setExperimentalAllowsFatalError(): void {
 }
 
 export default class Database {
+  /**
+   * Database's adapter - the low-level connection with the underlying database (e.g. SQLite)
+   *
+   * Unless you understand WatermelonDB's internals, you SHOULD NOT use adapter directly.
+   * Running queries, or updating/deleting records on the adapter will corrupt the in-memory cache
+   * if special care is not taken
+   */
   adapter: DatabaseAdapterCompat
 
   schema: AppSchema
@@ -48,23 +60,22 @@ export default class Database {
         modelClasses && Array.isArray(modelClasses),
         `Missing modelClasses parameter for new Database()`,
       )
-      // $FlowFixMe
-      options.actionsEnabled === false &&
-        invariant(false, 'new Database({ actionsEnabled: false }) is no longer supported')
-      options.actionsEnabled === true &&
-        logger.warn(
-          'new Database({ actionsEnabled: true }) option is unnecessary (actions are always enabled)',
-        )
     }
     this.adapter = new DatabaseAdapterCompat(adapter)
     this.schema = adapter.schema
     this.collections = new CollectionMap(this, modelClasses)
   }
 
+  /**
+   * Returns a `Collection` for a given table name
+   */
   get<T: Model>(tableName: TableName<T>): Collection<T> {
     return this.collections.get(tableName)
   }
 
+  /**
+   * Returns a `LocalStorage` (WatermelonDB-based localStorage/AsyncStorage alternative)
+   */
   get localStorage(): LocalStorage {
     if (!this._localStorage) {
       const LocalStorageClass = require('./LocalStorage').default
@@ -73,25 +84,29 @@ export default class Database {
     return this._localStorage
   }
 
-  // Executes multiple prepared operations
-  // (made with `collection.prepareCreate` and `record.prepareUpdate`)
-  // Note: falsy values (null, undefined, false) passed to batch are just ignored
-  async batch(...records: $ReadOnlyArray<Model | Model[] | null | void | false>): Promise<void> {
-    if (!Array.isArray(records[0])) {
-      // $FlowFixMe
-      return this.batch(records)
-    }
-    invariant(
-      records.length === 1,
-      'batch should be called with a list of models or a single array',
-    )
-    const actualRecords = records[0]
+  /*:: batch: ArrayOrSpreadFn<?Model | false, Promise<void>>  */
+  /**
+   * Executes multiple prepared operations
+   *
+   * Pass a list (or array) of operations like so:
+   * - `collection.prepareCreate(...)`
+   * - `record.prepareUpdate(...)`
+   * - `record.prepareMarkAsDeleted()` (or `record.prepareDestroyPermanently()`)
+   *
+   * Note that falsy values (null, undefined, false) passed to batch are simply ignored
+   * so you can use patterns like `.batch(condition && record.prepareUpdate(...))` for convenience.
+   *
+   * Note: This method must be called within a Writer {@link Database#write}.
+   */
+  // $FlowFixMe
+  async batch(...records: Array<?Model | false>): Promise<void> {
+    const actualRecords: Array<?Model> = fromArrayOrSpread(records, 'Database.batch', 'Model')
 
     this._ensureInWriter(`Database.batch()`)
 
     // performance critical - using mutations
     const batchOperations: BatchOperation[] = []
-    const changeNotifications: { [collectionName: TableName<any>]: CollectionChangeSet<*> } = {}
+    const changeNotifications: { [TableName<any>]: CollectionChangeSet<Model> } = {}
     actualRecords.forEach((record) => {
       if (!record) {
         return
@@ -140,53 +155,134 @@ export default class Database {
 
     await this.adapter.batch(batchOperations)
 
-    // NOTE: We must make two passes to ensure all changes to caches are applied before subscribers are called
-    const affectedTables = Object.keys(changeNotifications)
-    const changeNotificationsEntries = Object.entries(changeNotifications)
+    // Debug info
+    if (this.experimentalIsVerbose) {
+      const debugInfo = batchOperations
+        .map(([type, table, rawOrId]) => {
+          switch (type) {
+            case 'create':
+            case 'update':
+              return `${type} ${table}#${(rawOrId: any).id}`
+            case 'markAsDeleted':
+            case 'destroyPermanently':
+              return `${type} ${table}#${(rawOrId: any)}`
+            default:
+              return `${type}???`
+          }
+        })
+        .join(', ')
+      logger.debug(`batch: ${debugInfo}`)
+    }
 
-    changeNotificationsEntries.forEach((notification) => {
-      const [table, changeSet]: [TableName<any>, CollectionChangeSet<any>] = (notification: any)
+    // NOTE: We must make two passes to ensure all changes to caches are applied before subscribers are called
+    const changes: [TableName<any>, CollectionChangeSet<any>][] = (Object.entries(
+      changeNotifications,
+    ): any)
+
+    changes.forEach(([table, changeSet]) => {
       this.collections.get(table)._applyChangesToCache(changeSet)
     })
 
-    const databaseChangeNotifySubscribers = ([tables, subscriber]): void => {
-      if (tables.some((table) => affectedTables.includes(table))) {
+    this._notify(changes)
+
+    return undefined // shuts up flow
+  }
+
+  _pendingNotificationBatches: number = 0
+  _pendingNotificationChanges: [TableName<any>, CollectionChangeSet<any>][][] = []
+
+  _notify(changes: [TableName<any>, CollectionChangeSet<any>][]): void {
+    if (this._pendingNotificationBatches > 0) {
+      this._pendingNotificationChanges.push(changes)
+      return
+    }
+
+    const affectedTables = new Set(changes.map(([table]) => table))
+
+    const databaseChangeNotifySubscribers = ([tables, subscriber]: [
+      Array<TableName<any>>,
+      () => void,
+      any,
+    ]): void => {
+      if (tables.some((table) => affectedTables.has(table))) {
         subscriber()
       }
     }
     this._subscribers.forEach(databaseChangeNotifySubscribers)
 
-    changeNotificationsEntries.forEach((notification) => {
-      const [table, changeSet]: [TableName<any>, CollectionChangeSet<any>] = (notification: any)
+    changes.forEach(([table, changeSet]) => {
       this.collections.get(table)._notify(changeSet)
     })
-
-    return undefined // shuts up flow
   }
 
-  // Enqueues a Writer - a block of code that, when it's running, has a guarantee that no other Writer
-  // is running at the same time.
-  // All actions that modify the database (create, update, delete) must be performed inside of a Writer block
-  // See docs for more details and practical guide
+  async experimentalBatchNotifications<T>(work: () => Promise<T>): Promise<T> {
+    // TODO: Document & add tests if this proves useful
+    try {
+      this._pendingNotificationBatches += 1
+      const result = await work()
+      return result
+    } finally {
+      this._pendingNotificationBatches -= 1
+      if (this._pendingNotificationBatches === 0) {
+        const changes = this._pendingNotificationChanges
+        this._pendingNotificationChanges = []
+        changes.forEach((_changes) => this._notify(_changes))
+      }
+    }
+  }
+
+  /**
+   * Schedules a Writer
+   *
+   * Writer is a block of code, inside of which you can modify the database
+   * (call `Collection.create`, `Model.update`, `Database.batch` and so on).
+   *
+   * In a Writer, you're guaranteed that no other Writer is simultaneously executing. Therefore, you
+   * can rely on the results of queries and other asynchronous operations - they won't change for
+   * the duration of this Writer (except if changed by it).
+   *
+   * To call another Writer (or Reader) from this one without deadlocking, use `callWriter`
+   * (or `callReader`).
+   *
+   * See docs for more details and a practical guide.
+   *
+   * @param work - Block of code to execute
+   * @param [description] - Debug description of this Writer
+   */
   write<T>(work: (WriterInterface) => Promise<T>, description?: string): Promise<T> {
     return this._workQueue.enqueue(work, description, true)
   }
 
-  // Enqueues a Reader - a block of code that, when it's running, has a guarantee that no Writer
-  // is running at the same time (therefore, the database won't be modified for the duration of Reader's work)
-  // See docs for more details and practical guide
+  /**
+   * Schedules a Reader
+   *
+   * In a Reader, you're guaranteed that no Writer is running at the same time. Therefore, you can
+   * run many queries or other asynchronous operations, and you can rely on their results - they
+   * won't change for the duration of this Reader. However, other Readers might run concurrently.
+   *
+   * To call another Reader from this one, use `callReader`
+   *
+   * See docs for more details and a practical guide.
+   *
+   * @param work - Block of code to execute
+   * @param [description] - Debug description of this Reader
+   */
   read<T>(work: (ReaderInterface) => Promise<T>, description?: string): Promise<T> {
     return this._workQueue.enqueue(work, description, false)
   }
 
-  action<T>(work: (WriterInterface) => Promise<T>, description?: string): Promise<T> {
-    if (process.env.NODE_ENV !== 'production') {
-      deprecated('Database.action()', 'Use Database.write() instead.')
-    }
-    return this._workQueue.enqueue(work, `${description || 'unnamed'} (legacy action)`, true)
-  }
-
-  // Emits a signal immediately, and on change in any of the passed tables
+  /**
+   * Returns an `Observable` that emits a signal (`null`) immediately, and on every change in
+   * any of the passed tables.
+   *
+   * A set of changes made is passed with the signal, with an array of changes per-table
+   * (Currently, if changes are made to multiple different tables, multiple signals will be emitted,
+   * even if they're made with a batch. However, this behavior might change. Use Rx to debounce,
+   * throttle, merge as appropriate for your use case.)
+   *
+   * Warning: You can easily introduce performance bugs in your application by using this method
+   * inappropriately.
+   */
   withChangesForTables(tables: TableName<any>[]): Observable<CollectionChangeSet<any> | null> {
     const changesSignals = tables.map((table) => this.collections.get(table).changes)
 
@@ -195,7 +291,16 @@ export default class Database {
 
   _subscribers: [TableName<any>[], () => void, any][] = []
 
-  // Notifies `subscriber` on change in any of passed tables (only a signal, no change set)
+  /**
+   * Notifies `subscriber` on change in any of the passed tables.
+   *
+   * A single notification will be sent per `database.batch()` call.
+   * (Currently, no details about the changes made are provided, only a signal, but this behavior
+   * might change. Currently, subscribers are called before `withChangesForTables`).
+   *
+   * Warning: You can easily introduce performance bugs in your application by using this method
+   * inappropriately.
+   */
   experimentalSubscribe(
     tables: TableName<any>[],
     subscriber: () => void,
@@ -218,16 +323,22 @@ export default class Database {
 
   _isBeingReset: boolean = false
 
-  // Resets database - permanently destroys ALL records stored in the database, and sets up empty database
-  //
-  // NOTE: This is not 100% safe automatically and you must take some precautions to avoid bugs:
-  // - You must NOT hold onto any Database objects. DO NOT store or cache any records, collections, anything
-  // - You must NOT observe any record or collection or query
-  // - You SHOULD NOT have any pending (queued) Actions. Pending actions will be aborted (will reject with an error).
-  //
-  // It's best to reset your app to an empty / logged out state before doing this.
-  //
-  // Yes, this sucks and there should be some safety mechanisms or warnings. Please contribute!
+  /**
+   * Resets the database
+   *
+   * This permanently deletes the database (all records, metadata, and `LocalStorage`) and sets
+   * up an empty database.
+   *
+   * Special care must be taken to safely reset the database. Ideally, you should reset your app
+   * to an empty / "logging out" state while doing this. Specifically:
+   *
+   * - You MUST NOT hold onto Watermelon records other than this `Database`. Do not keep references
+   *   to records, collections, or any other objects from before database reset
+   * - You MUST NOT observe any Watermelon state. All Database, Collection, Query, and Model
+   *   observers/subscribers should be disposed of before resetting
+   * - You SHOULD NOT have any pending (queued) Readers or Writers. Pending work will be aborted
+   *   (rejected with an error)
+   */
   async unsafeResetDatabase(): Promise<void> {
     this._ensureInWriter(`Database.unsafeResetDatabase()`)
     try {
@@ -269,10 +380,15 @@ export default class Database {
     }
   }
 
-  _ensureInWriter(diagnosticMethodName: string): void {
+  // (experimental) if true, Models will print to console diagnostic information on every
+  // prepareCreate/Update/Delete call, as well as on commit (Database.batch() call). Note that this
+  // has a significant performance impact so should only be enabled when debugging.
+  experimentalIsVerbose: boolean = false
+
+  _ensureInWriter(debugName: string): void {
     invariant(
       this._workQueue.isWriterRunning,
-      `${diagnosticMethodName} can only be called from inside of a Writer. See docs for more details.`,
+      `${debugName} can only be called from inside of a Writer. See docs for more details.`,
     )
   }
 

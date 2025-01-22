@@ -6,10 +6,24 @@ import type { $RE } from '../types'
 
 import type Model from '../Model'
 
+/**
+ * String that signifies a database table name (mapping to WatermelonDB Models)
+ */
 export opaque type TableName<+T: Model>: string = string
+
+/**
+ * String that signifies a database column name (mapping to WatermelonDB fields)
+ */
 export opaque type ColumnName: string = string
 
+/**
+ * Type of a column
+ */
 export type ColumnType = 'string' | 'number' | 'boolean'
+
+/**
+ * Definition of a table column
+ */
 export type ColumnSchema = $RE<{
   name: ColumnName,
   type: ColumnType,
@@ -51,19 +65,28 @@ export type AppSchema = $RE<{
   unsafeSql?: (string, AppSchemaUnsafeSqlKind) => string,
 }>
 
+/**
+ * Creates a typed TableName
+ */
 export function tableName<T: Model>(name: string): TableName<T> {
   return name
 }
 
+/**
+ * Creates a typed ColumnName
+ */
 export function columnName(name: string): ColumnName {
   return name
 }
 
+/**
+ * Creates a database schema object. Pass table definitions created using {@see tableSchema}
+ */
 export function appSchema({ version, tables: tableList, unsafeSql }: AppSchemaSpec): AppSchema {
   if (process.env.NODE_ENV !== 'production') {
     invariant(version > 0, `Schema version must be greater than 0`)
   }
-  const tables: TableMap = tableList.reduce((map, table) => {
+  const tables: TableMap = tableList.reduce<{ [TableName<any>]: TableSchema }>((map, table) => {
     if (process.env.NODE_ENV !== 'production') {
       invariant(typeof table === 'object' && table.name, `Table schema must contain a name`)
     }
@@ -109,6 +132,9 @@ export function validateColumnSchema(column: ColumnSchema): void {
   }
 }
 
+/**
+ * Creates a typed TableSchema
+ */
 export function tableSchema({
   name,
   columns: columnArray,
@@ -119,7 +145,7 @@ export function tableSchema({
     validateName(name)
   }
 
-  const columns: ColumnMap = columnArray.reduce((map, column) => {
+  const columns: ColumnMap = columnArray.reduce<{ [ColumnName]: ColumnSchema }>((map, column) => {
     if (process.env.NODE_ENV !== 'production') {
       validateColumnSchema(column)
     }

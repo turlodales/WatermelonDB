@@ -1,6 +1,7 @@
 import { expectToRejectWithMessage } from '../__tests__/utils'
 import { mockDatabase } from '../__tests__/testModels'
 import { noop } from '../utils/fp'
+import { logger } from '../utils/common'
 import * as Q from '../QueryDescription'
 
 describe('Database', () => {
@@ -310,10 +311,40 @@ describe('Database', () => {
     })
     it(`throws an error if invalid arguments`, async () => {
       const { database } = mockDatabase()
-      await expectToRejectWithMessage(
-        database.batch([], null),
-        'batch should be called with a list',
-      )
+      await expectToRejectWithMessage(database.batch([], null), 'multiple arrays were passed')
+    })
+    it(`prints debug information in verbose mode`, async () => {
+      const { database, tasks, projects } = mockDatabase()
+      const spy = jest.spyOn(logger, 'debug')
+
+      database.experimentalIsVerbose = true
+
+      await database.write(async () => {
+        const t1 = tasks.prepareCreate()
+        const t2 = tasks.prepareCreate()
+        const p1 = projects.prepareCreate()
+
+        await database.batch(t1, t2, p1)
+        expect(spy).toHaveBeenCalledWith(`prepareCreate: mock_tasks#${t1.id}`)
+        expect(spy).toHaveBeenCalledWith(`prepareCreate: mock_tasks#${t2.id}`)
+        expect(spy).toHaveBeenCalledWith(`prepareCreate: mock_projects#${p1.id}`)
+        expect(spy).toHaveBeenLastCalledWith(
+          `batch: create mock_tasks#${t1.id}, create mock_tasks#${t2.id}, create mock_projects#${p1.id}`,
+        )
+
+        t1.prepareUpdate()
+        t2.prepareMarkAsDeleted()
+        p1.prepareDestroyPermanently()
+
+        await database.batch(t1, t2, p1)
+
+        expect(spy).toHaveBeenCalledWith(`prepareUpdate: mock_tasks#${t1.id}`)
+        expect(spy).toHaveBeenCalledWith(`prepareMarkAsDeleted: mock_tasks#${t2.id}`)
+        expect(spy).toHaveBeenCalledWith(`prepareDestroyPermanently: mock_projects#${p1.id}`)
+        expect(spy).toHaveBeenLastCalledWith(
+          `batch: update mock_tasks#${t1.id}, markAsDeleted mock_tasks#${t2.id}, destroyPermanently mock_projects#${p1.id}`,
+        )
+      })
     })
   })
 
@@ -470,7 +501,10 @@ describe('Database', () => {
     })
   })
 
-  const delayPromise = () => new Promise((resolve) => setTimeout(resolve, 100))
+  const delayPromise = () =>
+    new Promise((resolve) => {
+      setTimeout(resolve, 100)
+    })
 
   describe('Database readers/writers', () => {
     it('can execute a writer block', async () => {
@@ -613,8 +647,7 @@ describe('Database', () => {
       const action0 = () => db.read(async () => 42)
       const action1 = () => db.write(async (writer) => writer.callReader(() => action0()))
       const action2 = () => db.write(async (writer) => writer.callWriter(() => action1()))
-      const action3 = () => db.write(async (writer) => writer.subAction(() => action2()))
-      expect(await action3()).toBe(42)
+      expect(await action2()).toBe(42)
     })
     it(`cannot call writers from readers`, async () => {
       const { db } = mockDatabase()
@@ -707,7 +740,6 @@ describe('Database', () => {
       const promise = action0()
       saved.callReader(() => sth())
       saved.callWriter(() => sth())
-      saved.subAction(() => sth())
       saved.batch()
       await promise
 
@@ -715,7 +747,6 @@ describe('Database', () => {
         expect(work).toThrow('Illegal call on a reader/writer that should no longer be running')
       expectError(() => saved.callReader(() => sth()))
       expectError(() => saved.callWriter(() => sth()))
-      expectError(() => saved.subAction(() => sth()))
       expectError(() => saved.batch())
 
       db.write(async () => {})

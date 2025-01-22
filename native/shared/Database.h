@@ -1,13 +1,23 @@
 #pragma once
 
-#import <jsi/jsi.h>
-#import <unordered_map>
-#import <unordered_set>
-#import <mutex>
-#import <sqlite3.h>
-#import "simdjson.h"
+#include <jsi/jsi.h>
+#include <unordered_map>
+#include <unordered_set>
+#include <mutex>
+#include <sqlite3.h>
 
-#import "Sqlite.h"
+// FIXME: Make these paths consistent across platforms
+#if __ANDROID__
+#import <simdjson.h>
+#elif defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+#include <simdjson.h>
+#else
+// Does Xcode error on this line? You probably didn't include `simdjson` as a dependency in your Podfile.
+#include <simdjson/simdjson.h>
+#endif
+
+#include "Sqlite.h"
+#include "DatabasePlatform.h"
 
 using namespace facebook;
 
@@ -71,5 +81,9 @@ private:
     void markAsCached(std::string cacheKey);
     void removeFromCache(std::string cacheKey);
 };
+
+inline std::string cacheKey(std::string tableName, std::string recordId) {
+    return tableName + "$" + recordId; // NOTE: safe as long as table names cannot contain $ sign
+}
 
 } // namespace watermelondb

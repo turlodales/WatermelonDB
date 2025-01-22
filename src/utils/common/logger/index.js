@@ -1,13 +1,17 @@
 // @flow
 /* eslint-disable no-console */
 
-const formatMessages = (messages) => {
+const formatMessages = (messages: Array<any>) => {
   const [first, ...other] = messages
   return [typeof first === 'string' ? `[🍉] ${first}` : first, ...other]
 }
 
 class Logger {
   silent: boolean = false
+
+  debug(...messages: any[]): void {
+    !this.silent && console.debug(...formatMessages(messages))
+  }
 
   log(...messages: any[]): void {
     !this.silent && console.log(...formatMessages(messages))

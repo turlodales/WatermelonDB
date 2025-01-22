@@ -1,4 +1,4 @@
-import { type Observable, startWith, merge as merge$ } from '../utils/rx'
+import type { Observable } from '../utils/rx'
 import { Unsubscribe } from '../utils/subscriptions'
 
 import type { DatabaseAdapter } from '../adapters/type'
@@ -10,16 +10,17 @@ import type { TableName, AppSchema } from '../Schema'
 
 import CollectionMap from './CollectionMap'
 import type LocalStorage from './LocalStorage'
-import WorkQueue, { type ReaderInterface, type WriterInterface } from './WorkQueue'
+import WorkQueue from './WorkQueue'
+import type { ReaderInterface, WriterInterface } from './WorkQueue'
 
-import { $ReadOnlyArray, $Exact } from '../types'
+import { $ReadOnlyArray, $Exact, Class } from '../types'
 
 type DatabaseProps = $Exact<{
   adapter: DatabaseAdapter
-  modelClasses: Model[]
+  modelClasses: Class<Model>[] | Model[]
 }>
 
-export function setExperimentalAllowsFatalError()
+export function setExperimentalAllowsFatalError(): void
 
 export default class Database {
   adapter: DatabaseAdapterCompat
@@ -86,6 +87,11 @@ export default class Database {
   //
   // Yes, this sucks and there should be some safety mechanisms or warnings. Please contribute!
   unsafeResetDatabase(): Promise<void>
+
+  // (experimental) if true, Models will print to console diagnostic information on every
+  // prepareCreate/Update/Delete call, as well as on commit (Database.batch() call). Note that this
+  // has a significant performance impact so should only be enabled when debugging.
+  experimentalIsVerbose: boolean
 
   _ensureInWriter(diagnosticMethodName: string): void
 

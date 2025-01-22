@@ -1,19 +1,33 @@
-const blacklist = require('metro-config/src/defaults/blacklist')
+const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config')
+const exclusionList = require('metro-config/src/defaults/exclusionList')
+// const fs = require('fs')
 const path = require('path')
 const glob = require('glob-to-regexp')
+const metroCache = require('metro-cache')
 
-const getBlacklistRE = () => {
-  // ignore dist/, dev/
-  const defaultPattern = blacklist([
+// const rnwPath = fs.realpathSync(
+//   path.resolve(require.resolve('react-native-windows/package.json'), '..'),
+// )
+
+const getBlockList = () => {
+  const defaultPattern = exclusionList([
+    // ignore dist/, dev/
     glob(`${path.resolve(__dirname, '..')}/dist/*`),
     glob(`${path.resolve(__dirname, '..')}/dev/*`),
     glob(`${path.resolve(__dirname, '..')}/example/*`),
+    // This stops "react-native run-windows" from causing the metro server to crash if its already running
+    // TODO: Shouldn't it be native/windowsTest?
+    new RegExp(`${path.resolve(__dirname, 'windows').replace(/[/\\]/g, '/')}.*`),
+    // This prevents "react-native run-windows" from hitting: EBUSY: resource busy or locked, open msbuild.ProjectImports.zip or other files produced by msbuild
+    // new RegExp(`${rnwPath}/build/.*`),
+    // new RegExp(`${rnwPath}/target/.*`),
+    // /.*\.ProjectImports\.zip/,
   ])
     .toString()
     .slice(1, -1)
 
   // delete __tests__ from the default blacklist
-  const newPattern = defaultPattern.replace(`|.*\\/__tests__\\/.*`, '')
+  const newPattern = defaultPattern.replace(`|\\${path.sep}__tests__\\${path.sep}.*`, '')
 
   return RegExp(newPattern)
 }
@@ -35,11 +49,16 @@ const config = {
       stream: path.resolve(__dirname, 'src/__tests__/emptyMock'),
       constants: path.resolve(__dirname, 'src/__tests__/emptyMock'),
     },
-    blacklistRE: getBlacklistRE(),
+    blockList: getBlockList(),
   },
   transformer: {
-    babelTransformerPath: path.resolve(__dirname, 'rn-transformer.js'),
+    babelTransformerPath: path.resolve(__dirname, 'native/metro-transformer.js'),
   },
+  cacheStores: [
+    new metroCache.FileStore({
+      root: path.resolve(__dirname, '.cache/metro'),
+    }),
+  ],
 }
 
-module.exports = config
+module.exports = mergeConfig(getDefaultConfig(__dirname), config)

@@ -1,12 +1,10 @@
-import { type ColumnName, type ColumnSchema, type TableSchema } from '../Schema'
-import { type RecordId, type SyncStatus } from '../Model'
-
-import randomId from '../utils/common/randomId'
+import type { ColumnName, ColumnSchema, TableSchema } from '../Schema'
+import type { RecordId, SyncStatus } from '../Model'
 
 // Raw object representing a model record, coming from an untrusted source
 // (disk, sync, user data). Before it can be used to create a Model instance
 // it must be sanitized (with `sanitizedRaw`) into a RawRecord
-export type DirtyRaw = Object
+export type DirtyRaw = { [key: string]: any }
 
 // These fields are ALWAYS present in records of any collection.
 type _RawRecord = {

@@ -1,4 +1,4 @@
-import expect from 'expect-rn'
+/* eslint-disable jest/no-standalone-expect */
 import naughtyStrings, {
   bigEndianByteOrderMark,
   littleEndianByteOrderMark,
@@ -36,6 +36,7 @@ class BadModel extends Model {
 export default () => {
   const commonTests = []
   const it = (name, test) => commonTests.push([name, test])
+  it.only = (name, test) => commonTests.push([name, test, true])
   it('validates adapter options', async (_adapter, AdapterClass, extraAdapterOptions) => {
     const schema = { ...testSchema, version: 10 }
 
@@ -347,8 +348,8 @@ export default () => {
       expect(
         await adapter.unsafeQueryRaw(
           taskQuery(
-            Q.unsafeLokiTransform((raws, loki) => {
-              return raws
+            Q.unsafeLokiTransform((raws, loki) =>
+              raws
                 .sort((a, b) => b.order - a.order)
                 .map((raw) => {
                   const { id, text1 } = raw
@@ -361,8 +362,8 @@ export default () => {
                     tags: assignments.length,
                     magic: assignments.length ? assignments.reduce((a, b) => a + b) : null,
                   }
-                })
-            }),
+                }),
+            ),
           ),
         ),
       ).toEqual([
@@ -570,10 +571,12 @@ export default () => {
     expect(await adapter.getDeletedRecords('tasks')).toHaveLength(0)
     expect(await queryAll()).toHaveLength(1)
   })
-  it(`can unsafely load from sync JSON`, async (adapter, AdapterClass) => {
+  it(`can unsafely load from sync JSON`, async (adapter, AdapterClass, extraAdapterOptions, platform) => {
     if (
       !(
-        AdapterClass.name === 'SQLiteAdapter' && adapter.underlyingAdapter._dispatcherType === 'jsi'
+        AdapterClass.name === 'SQLiteAdapter' &&
+        adapter.underlyingAdapter._dispatcherType === 'jsi' &&
+        platform !== 'windows'
       )
     ) {
       await expectToRejectWithMessage(
@@ -673,10 +676,12 @@ export default () => {
       'bad changeset field',
     )
   })
-  it(`can return residual JSON from sync JSON`, async (adapter, AdapterClass) => {
+  it(`can return residual JSON from sync JSON`, async (adapter, AdapterClass, extraAdapterOptions, platform) => {
     if (
       !(
-        AdapterClass.name === 'SQLiteAdapter' && adapter.underlyingAdapter._dispatcherType === 'jsi'
+        AdapterClass.name === 'SQLiteAdapter' &&
+        adapter.underlyingAdapter._dispatcherType === 'jsi' &&
+        platform !== 'windows'
       )
     ) {
       await expectToRejectWithMessage(
@@ -701,10 +706,12 @@ export default () => {
     await check({ naughty: 'foo{\nbar\0' })
     await check({ _naughty: { '_naughty\n{\0': 'yes' } })
   })
-  it(`destroys provided jsons after being used`, async (adapter, AdapterClass) => {
+  it(`destroys provided jsons after being used`, async (adapter, AdapterClass, extraAdapterOptions, platform) => {
     if (
       !(
-        AdapterClass.name === 'SQLiteAdapter' && adapter.underlyingAdapter._dispatcherType === 'jsi'
+        AdapterClass.name === 'SQLiteAdapter' &&
+        adapter.underlyingAdapter._dispatcherType === 'jsi' &&
+        platform !== 'windows'
       )
     ) {
       await expectToRejectWithMessage(
@@ -1153,20 +1160,25 @@ export default () => {
       await expect(adapterPromise).rejects.toBeInstanceOf(Error)
     }
   })
-  it('can actually save and read from file system', async (_adapter, AdapterClass, extraAdapterOptions) => {
+  it('can actually save and read from file system', async (_adapter, AdapterClass, extraAdapterOptions, platform) => {
     if (AdapterClass.name === 'LokiJSAdapter') {
       // Loki is tested differently
       return
     }
-    const fileName = `testDatabase-${Math.random()}`
+
+    const fileName =
+      platform === 'node'
+        ? `.tmp/testDatabase-${Math.random()}.db`
+        : `testDatabase-${Math.random()}.db`
 
     const adapter = new DatabaseAdapterCompat(
       new AdapterClass({
+        ...extraAdapterOptions,
         dbName: fileName,
         schema: { ...testSchema, version: 1 },
-        ...extraAdapterOptions,
       }),
     )
+    expect(adapter.dbName).toBe(fileName)
 
     // sanity check
     expect(await adapter.count(taskQuery())).toBe(0)
@@ -1176,9 +1188,9 @@ export default () => {
     // open second db
     const adapter2 = new DatabaseAdapterCompat(
       new AdapterClass({
+        ...extraAdapterOptions,
         dbName: fileName,
         schema: { ...testSchema, version: 1 },
-        ...extraAdapterOptions,
       }),
     )
 
@@ -1191,9 +1203,9 @@ export default () => {
     // open third db
     const adapter3 = new DatabaseAdapterCompat(
       new AdapterClass({
+        ...extraAdapterOptions,
         dbName: fileName,
         schema: { ...testSchema, version: 1 },
-        ...extraAdapterOptions,
       }),
     )
 

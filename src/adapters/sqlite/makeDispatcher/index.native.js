@@ -1,7 +1,7 @@
 // @flow
 /* eslint-disable global-require */
 
-import { NativeModules } from 'react-native'
+import { NativeModules, Platform } from 'react-native'
 import { type ConnectionTag, logger, invariant } from '../../../utils/common'
 import { fromPromise, type ResultCallback } from '../../../utils/fp/Result'
 import type {
@@ -9,31 +9,51 @@ import type {
   SQLiteAdapterOptions,
   SqliteDispatcher,
   SqliteDispatcherMethod,
+  SqliteDispatcherOptions,
 } from '../type'
 
-const { DatabaseBridge } = NativeModules
+const { WMDatabaseBridge, WMDatabaseJSIBridge } = NativeModules
 
 class SqliteNativeModulesDispatcher implements SqliteDispatcher {
   _tag: ConnectionTag
+  _unsafeNativeReuse: boolean
+  _bridge: any
 
-  constructor(tag: ConnectionTag): void {
+  constructor(
+    tag: ConnectionTag,
+    bridge: any,
+    { experimentalUnsafeNativeReuse }: SqliteDispatcherOptions,
+  ): void {
     this._tag = tag
+    this._bridge = bridge
+    this._unsafeNativeReuse = experimentalUnsafeNativeReuse
     if (process.env.NODE_ENV !== 'production') {
       invariant(
-        DatabaseBridge,
-        `NativeModules.DatabaseBridge is not defined! This means that you haven't properly linked WatermelonDB native module. Refer to docs for more details`,
+        this._bridge,
+        `NativeModules.WMDatabaseBridge is not defined! This means that you haven't properly linked WatermelonDB native module. Refer to docs for instructions about installation (and the changelog if this happened after an upgrade).`,
+      )
+
+      invariant(
+        Platform.OS !== 'windows',
+        'Windows is only supported via JSI. Pass { jsi: true } to SQLiteAdapter constructor.',
       )
     }
   }
 
   call(name: SqliteDispatcherMethod, _args: any[], callback: ResultCallback<any>): void {
-    let methodName = name
+    let methodName: string = name
     let args = _args
-    if (methodName === 'batch' && DatabaseBridge.batchJSON) {
+    if (methodName === 'batch' && this._bridge.batchJSON) {
       methodName = 'batchJSON'
       args = [JSON.stringify(args[0])]
+    } else if (
+      ['initialize', 'setUpWithSchema', 'setUpWithMigrations'].includes(methodName) &&
+      Platform.OS === 'android'
+    ) {
+      // FIXME: Hacky, refactor once native reuse isn't an "unsafe experimental" option
+      args.push(this._unsafeNativeReuse)
     }
-    fromPromise(DatabaseBridge[methodName](this._tag, ...args), callback)
+    fromPromise(this._bridge[methodName](this._tag, ...args), callback)
   }
 }
 
@@ -41,13 +61,13 @@ class SqliteJsiDispatcher implements SqliteDispatcher {
   _db: any
   _unsafeErrorListener: (Error) => void // debug hook for NT use
 
-  constructor(dbName: string, usesExclusiveLocking: boolean): void {
+  constructor(dbName: string, { usesExclusiveLocking }: SqliteDispatcherOptions): void {
     this._db = global.nativeWatermelonCreateAdapter(dbName, usesExclusiveLocking)
     this._unsafeErrorListener = () => {}
   }
 
   call(name: SqliteDispatcherMethod, _args: any[], callback: ResultCallback<any>): void {
-    let methodName = name
+    let methodName: string = name
     let args = _args
 
     if (methodName === 'query' && !global.HermesInternal) {
@@ -57,8 +77,13 @@ class SqliteJsiDispatcher implements SqliteDispatcher {
     } else if (methodName === 'batch') {
       methodName = 'batchJSON'
       args = [JSON.stringify(args[0])]
+    } else if (
+      Platform.OS === 'windows' &&
+      (methodName === 'provideSyncJson' || methodName === 'unsafeLoadFromSync')
+    ) {
+      callback({ error: new Error(`${methodName} unavailable on Windows. Please contribute.`) })
     } else if (methodName === 'provideSyncJson') {
-      fromPromise(DatabaseBridge.provideSyncJson(...args), callback)
+      fromPromise(WMDatabaseBridge.provideSyncJson(...args), callback)
       return
     }
 
@@ -66,13 +91,13 @@ class SqliteJsiDispatcher implements SqliteDispatcher {
       const method = this._db[methodName]
       if (!method) {
         throw new Error(
-          `Cannot run database method ${method} because database failed to open. ${Object.keys(
+          `Cannot run database method ${methodName} because database failed to open. Hint: Did you install JSI correctly? This happens if you forgot to configure Proguard correctly ${Object.keys(
             this._db,
           ).join(',')}`,
         )
       }
       let result = method(...args)
-      // On Android, errors are returned, not thrown - see DatabaseInstallation.cpp
+      // On Android, errors are returned, not thrown - see DatabaseBridge.cpp
       if (result instanceof Error) {
         throw result
       } else {
@@ -92,25 +117,35 @@ export const makeDispatcher = (
   type: DispatcherType,
   tag: ConnectionTag,
   dbName: string,
-  usesExclusiveLocking: boolean,
-): SqliteDispatcher =>
-  type === 'jsi'
-    ? new SqliteJsiDispatcher(dbName, usesExclusiveLocking)
-    : new SqliteNativeModulesDispatcher(tag)
+  options: SqliteDispatcherOptions,
+): SqliteDispatcher => {
+  switch (type) {
+    case 'jsi':
+      return new SqliteJsiDispatcher(dbName, options)
+    case 'asynchronous':
+      return new SqliteNativeModulesDispatcher(tag, WMDatabaseBridge, options)
+    default:
+      throw new Error('Unknown DispatcherType')
+  }
+}
 
 const initializeJSI = () => {
   if (global.nativeWatermelonCreateAdapter) {
     return true
   }
 
-  if (DatabaseBridge.initializeJSI) {
+  const bridge = WMDatabaseBridge
+  if (bridge.initializeJSI) {
     try {
-      DatabaseBridge.initializeJSI()
+      bridge.initializeJSI()
       return !!global.nativeWatermelonCreateAdapter
     } catch (e) {
       logger.error('[SQLite] Failed to initialize JSI')
       logger.error(e)
     }
+  } else if (WMDatabaseJSIBridge && WMDatabaseJSIBridge.install) {
+    WMDatabaseJSIBridge.install()
+    return !!global.nativeWatermelonCreateAdapter
   }
 
   return false
